@@ -327,8 +327,7 @@ with aL:
                           legend=dict(orientation="h", y=-0.08, font=dict(size=10)))
         fig.update_layout(**DARK, height=230, margin=dict(l=6, r=6, t=6, b=6))
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"Biggest: **{biggest}** ({gw(gen_now.get(biggest, 0))}) · "
-                   f"Solar {gw(solar_now)} · Wind {gw(wind_now)}")
+        st.caption(f"Solar {gw(solar_now)} · Wind {gw(wind_now)} · Fossil {gw(fos_now)}")
     with st.container(border=True):
         phdr(2, "By source · live MW")
         ordered = sorted(gen_now.items(), key=lambda kv: kv[1])
@@ -486,9 +485,8 @@ with st.sidebar:
                "green-power (GrünstromIndex) with weather.")
     st.divider()
     st.header("Diagnostics")
-    st.metric("Last refresh", now_b.strftime("%H:%M"))
-    st.caption("Auto-refreshes every 2 min while open. Streamlit Cloud sleeps when idle, "
-               "then wakes and re-fetches on the next visit.")
+    st.caption("The clock (top-right) is live — the app auto-refreshes every 2 min while open. "
+               "Streamlit Cloud sleeps when idle, then wakes and re-fetches on the next visit.")
     st.divider()
     st.caption(f"Energy-Charts publishes the national mix ~{max(0, int(time.time() - unix[-1])) // 60} "
                "min behind real time (the source's lag) — GrünstromIndex and weather are live.")
