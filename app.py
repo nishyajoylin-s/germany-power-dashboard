@@ -100,7 +100,9 @@ h1,h2,h3,h4{ font-family:'Rajdhani',sans-serif!important; letter-spacing:.04em; 
   border:1px solid var(--brd); border-radius:8px; padding:10px 14px;
   box-shadow:inset 0 0 22px rgba(15,80,140,.16); }
 [data-testid="stMetricValue"]{ font-family:'Orbitron',sans-serif!important; color:var(--cyanb)!important;
-  text-shadow:0 0 16px rgba(34,211,238,.55); font-weight:700; font-size:1.5rem; }
+  text-shadow:0 0 13px rgba(34,211,238,.5); font-weight:700; font-size:1.2rem; line-height:1.2;
+  white-space:normal!important; overflow:visible!important; text-overflow:clip!important; }
+[data-testid="stMetricValue"] *{ white-space:normal!important; overflow:visible!important; text-overflow:clip!important; }
 [data-testid="stMetricLabel"] p{ color:var(--muted)!important; text-transform:uppercase; letter-spacing:.09em; font-size:.66rem!important; }
 
 /* bordered containers = glowing panels with corner brackets */
