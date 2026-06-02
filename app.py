@@ -114,6 +114,9 @@ h1,h2,h3,h4{ font-family:'Rajdhani',sans-serif!important; letter-spacing:.04em; 
   content:''; position:absolute; width:14px; height:14px; border:2px solid var(--cyan); opacity:.85; z-index:3; }
 [data-testid="stVerticalBlockBorderWrapper"]::before{ top:-1px; left:-1px; border-right:0; border-bottom:0; }
 [data-testid="stVerticalBlockBorderWrapper"]::after{ bottom:-1px; right:-1px; border-left:0; border-top:0; }
+/* stretch single-panel columns to equal height so a row's panels line up */
+[data-testid="stColumn"] > [data-testid="stVerticalBlock"]:has(> [data-testid="stVerticalBlockBorderWrapper"]:only-child){ height:100%; }
+[data-testid="stColumn"] > [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlockBorderWrapper"]:only-child{ height:100%; }
 
 [data-testid="stSidebar"]{ background:linear-gradient(180deg,#0a1c38,#060e20); border-right:1px solid var(--brd); }
 hr{ border-color:var(--brd)!important; margin:.5rem 0; }
