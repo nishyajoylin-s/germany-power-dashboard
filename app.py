@@ -486,10 +486,13 @@ with st.sidebar:
                "green-power (GrünstromIndex) with weather.")
     st.divider()
     st.header("Diagnostics")
-    st.metric("Grid data age", f"{max(0, int(time.time() - unix[-1])) // 60} min")
-    st.caption(f"Cities live: {len(live)}/{len(CITIES)}")
-    st.caption(f"Fetch + prep: {fetch_ms:.0f} ms")
-    st.caption("Feeds: Energy-Charts · Corrently · Open-Meteo")
-    st.caption("No API key · no database · auto-refresh 2 min")
+    st.metric("Last refresh", now_b.strftime("%H:%M"))
+    st.caption("Auto-refreshes every 2 min while open. Streamlit Cloud sleeps when idle, "
+               "then wakes and re-fetches on the next visit.")
+    st.divider()
+    st.caption(f"Energy-Charts publishes the national mix ~{max(0, int(time.time() - unix[-1])) // 60} "
+               "min behind real time (the source's lag) — GrünstromIndex and weather are live.")
+    st.caption(f"States live: {len(live)}/{len(CITIES)} · fetch {fetch_ms:.0f} ms")
+    st.caption("Feeds: Energy-Charts · Corrently · Open-Meteo · no key, no DB")
     st.divider()
     st.caption("Germany shut its last nuclear plants in April 2023 — no nuclear in the mix.")
