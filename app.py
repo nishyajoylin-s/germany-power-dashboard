@@ -280,6 +280,10 @@ for i, (city, lat, lon, pop, state, zipc) in enumerate(CITIES):
 cdf = pd.DataFrame(rows)
 live = cdf.dropna(subset=["gsi"])
 greenest_state = live.loc[live["gsi"].idxmax(), "state"] if not live.empty else "—"
+_SHORT_STATE = {"Baden-Württemberg": "Baden-Württ.", "Mecklenburg-Vorpommern": "Meck.-Vorp.",
+                "North Rhine-Westphalia": "NRW", "Rhineland-Palatinate": "Rhineland-Pf.",
+                "Schleswig-Holstein": "Schleswig-H."}
+greenest_short = _SHORT_STATE.get(greenest_state, greenest_state)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -312,7 +316,7 @@ n2.metric("Carbon intensity", f"{ci_now:.0f} g")
 n3.metric("Total generation", gw(total_gen))
 n4.metric("Demand", gw(load_now))
 n5.metric("Power price", f"€{price_now:,.0f}" if price_now is not None else "—")
-n6.metric("Greenest state", greenest_state)
+n6.metric("Greenest state", greenest_short)
 st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
 # ═══════════ ROW A — mix (left) · MAP anchor (centre) · carbon (right) ═════════
