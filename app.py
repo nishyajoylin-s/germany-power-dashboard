@@ -298,10 +298,10 @@ with hL:
                 "<div class='cc-sub'>Live generation · carbon · prices · city green-power</div>",
                 unsafe_allow_html=True)
 with hR:
-    upd = datetime.fromtimestamp(unix[-1], tz=timezone.utc).astimezone()
+    now_b = pd.Timestamp.now(tz="Europe/Berlin")  # real wall-clock, not the server's UTC
     st.markdown(f"<div style='text-align:right'><span class='cc-title' style='font-size:1.4rem'>"
-                f"{upd.strftime('%H:%M')}</span><br><span class='cc-sub'>"
-                f"{upd.strftime('%a %d %b %Y')} · live</span></div>", unsafe_allow_html=True)
+                f"{now_b.strftime('%H:%M')}</span><br><span class='cc-sub'>"
+                f"{now_b.strftime('%a %d %b %Y')} · Berlin</span></div>", unsafe_allow_html=True)
 
 # national key-indicator strip
 n1, n2, n3, n4, n5, n6 = st.columns(6)

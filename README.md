@@ -1,40 +1,47 @@
 # ⚡ Germany — Live Power Grid & Carbon Dashboard
 
-A real-time dashboard for the German electricity system: **what is generating power right
-now, how clean it is, and what it costs.** Built with Streamlit and Plotly on top of the
-public [Energy-Charts](https://energy-charts.info) API (Fraunhofer ISE). No API key, no
-database, no simulation — every refresh pulls live JSON and renders it.
+A single-screen, real-time **command-centre** for the German electricity system: what's
+generating power right now, how clean it is, what it costs, and how green each federal state
+is — all on one page. Built with Streamlit + Plotly on public feeds. **No API key, no
+database, no simulation** — every refresh pulls live JSON and renders it.
 
-🔗 **Live demo:** _deploying — link to follow_
+🔗 **Live demo:** **[germany-power-dashboard.streamlit.app](https://germany-power-dashboard.streamlit.app/)**
 
 ---
 
-## What it shows
+## What it shows (one screen, live panels)
 
-**⚡ Live Mix** — the generation mix in real time: a stacked area of every source through the
-day with demand overlaid, the current breakdown by source, and a renewable-vs-fossil split.
+- **Key-indicator strip** — renewable share, grid carbon intensity, total generation, demand,
+  power price, and the greenest federal state, all live.
+- **Generation mix** — renewable/fossil/other donut, a live by-source bar, and the day's mix as
+  a stacked area with demand overlaid.
+- **Live map (centrepiece)** — all **16 federal states** as bubbles coloured by their live
+  [Corrently GrünstromIndex](https://corrently.de) (0–100 green-power score), sitting over a
+  **live solar-irradiance field** sampled from a ~300-point [Open-Meteo](https://open-meteo.com)
+  grid (amber where the sun is strongest right now).
+- **Carbon & climate** — a computed grid carbon-intensity gauge (gCO₂/kWh) and its curve through
+  the day, plus a renewable-share-vs-2030-target gauge.
+- **Prices** — the day-ahead wholesale power price (€/MWh).
+- **States** — a "greenest state right now" ranking and a forecast of the greenest upcoming hours
+  for a chosen state (the cheapest, lowest-carbon time to run heavy loads).
+- **Key figures** — solar, wind, fossil, CO₂ rate (t/h), net export/import, average price.
 
-**🌱 Carbon & Climate** — a **grid carbon-intensity** figure (gCO₂/kWh) computed from the live
-mix using IPCC AR5 lifecycle emission factors, the CO₂ emission rate (tonnes/hour), a carbon
-gauge, a **renewable-share-vs-2030-target** gauge, and carbon intensity through the day.
+## Data (all live, no key)
 
-**💶 Prices & Market** — the day-ahead wholesale power price (€/MWh) and a *"greener grid,
-cheaper power?"* view showing how price moves with the renewable share.
-
-**🗺 Federal states** — genuinely live data for **all 16 German states** (sampled at each state
-capital): the [Corrently GrünstromIndex](https://corrently.de) (how green each postcode's power
-is right now, 0–100, plus local CO₂) on a dark map, a "greenest state now" ranking, live
-solar/wind per state from [Open-Meteo](https://open-meteo.com), and a forecast of the greenest
-upcoming hours. The whole thing is a single-screen command-centre layout.
+| Feed | Provides |
+|------|----------|
+| [Energy-Charts](https://energy-charts.info) (Fraunhofer ISE) | national generation mix + day-ahead price |
+| [Corrently GrünstromIndex](https://corrently.de) | per-postcode green-power index (sampled at each of the 16 state capitals) |
+| [Open-Meteo](https://open-meteo.com) | live solar irradiance + wind (per state, and a ~300-point grid for the heatmap) |
 
 ## Why carbon intensity is computed, not fetched
 
 Energy-Charts has no CO₂ endpoint for Germany, so the dashboard derives grid carbon intensity
 itself: `intensity = Σ(generationₛ × emission_factorₛ) / Σ(generationₛ)`, using published IPCC
-AR5 median lifecycle factors (gCO₂eq/kWh). This makes the climate metric transparent and
-auditable — every assumption is in `app.py`.
+AR5 median lifecycle factors (gCO₂eq/kWh). Every assumption is in `app.py`, so the climate
+metric is transparent and auditable.
 
-> Note: Germany shut down its last nuclear plants in April 2023, so there is no nuclear source.
+> Germany shut down its last nuclear plants in April 2023, so there is no nuclear source.
 
 ## Run locally
 
@@ -48,19 +55,20 @@ streamlit run app.py
 
 ## Deploy (Streamlit Community Cloud)
 
-Push to GitHub, then on [share.streamlit.io](https://share.streamlit.io) create a new app
-with **Main file path:** `app.py`. It comes up in seconds — there is no data to download.
+Push to GitHub, then on [share.streamlit.io](https://share.streamlit.io) create a new app with
+**Main file path:** `app.py`. It comes up in seconds — there is no data to download.
 
 ## Stack
 
 | Piece | Tool |
 |-------|------|
-| Data | Energy-Charts (national generation + price) · Corrently GrünstromIndex (per-city green power) · Open-Meteo (per-city weather) |
-| Carbon model | IPCC AR5 lifecycle emission factors |
-| App / charts | Streamlit + Plotly |
-| Refresh | `streamlit-autorefresh` (every 2 min, matching the 15-min feed) |
+| Data | Energy-Charts · Corrently GrünstromIndex · Open-Meteo (all key-free) |
+| Carbon model | IPCC AR5 lifecycle emission factors (in `app.py`) |
+| App / charts | Streamlit + Plotly, single-screen command-centre layout |
+| Refresh | `streamlit-autorefresh`, every 2 min (matching the 15-min feeds) |
 
-## Ideas / roadmap
+## Roadmap
 
-See [`DECISIONS.md`](DECISIONS.md) for design rationale and next steps (CO₂ intensity vs. last
-week, spot-price overlays, capacity factors).
+See [`DECISIONS.md`](DECISIONS.md). Next ideas: clip the solar field to Germany's borders,
+genuinely-live regional load via SMARD's 4 TSO control zones, capacity factors (actual vs
+installed), and renewable share vs the same weekday last week.
