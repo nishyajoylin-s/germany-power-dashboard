@@ -42,11 +42,29 @@ glance while matching the theme.
 Germany shut its last reactors in April 2023, so there is no nuclear series. The sidebar says so,
 so the absence reads as accurate, not a bug.
 
+### D8 — One screen, read in a Z
+The dashboard is a single screen, not a scroll, laid out for how people scan: headline KPIs across
+the top, the live map anchoring the centre, the diagonal of trend charts, and the one actionable
+chart (when power will be greenest) at the bottom-right where the eye finishes. Metric values use
+the condensed Rajdhani font on one line so cards stay equal height; long state names are abbreviated
+only in the top KPI strip, and single-panel columns are stretched to equal height so each row lines
+up.
+
 ## Gotchas worth remembering
 - `Densitymapbox` silently renders nothing with a transparent low-end colour scale — use solid
   colours + `opacity`, and keep it the same trace family (`*mapbox`) as the bubbles.
 - `add_vline` with a tz-aware pandas Timestamp throws (it averages timestamps); use `add_shape` +
   `add_annotation` with `.to_pydatetime()` instead.
+
+## Resilience: per-feed graceful degradation (2026-08-03)
+Energy-Charts (national mix + price) is a single upstream host. Previously, if it failed,
+`load_power()` → `st.error()` + `st.stop()` blanked the **entire** dashboard — even though
+GrünstromIndex (map, per-state index, forecast) and Open-Meteo (weather) were independent and
+live. Now a failed power feed sets `power_ok=False` with `times/series/unix = [], {}, None`;
+every power/price-derived panel renders an `_offline()` placeholder while the independent panels
+keep working, and a warning banner explains the pause. The app auto-retries every 2 min via the
+existing autorefresh + cache TTL. Rule: no single upstream host should be able to take down
+panels fed by other sources.
 
 ## Ideas for next iterations
 - Clip the solar field to Germany's outline (point-in-polygon on a GeoJSON).

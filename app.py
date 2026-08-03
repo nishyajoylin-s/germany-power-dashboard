@@ -218,11 +218,15 @@ def last_val(arr):
 # ── load everything ───────────────────────────────────────────────────────────
 st_autorefresh(interval=REFRESH_MS, key="refresh")
 t0 = time.perf_counter()
+# Energy-Charts (national mix + price) is a single upstream host. If it's down we still
+# render the independent live panels (solar map, per-state green index, forecast) instead
+# of blanking the whole dashboard. TODO: revisit if Energy-Charts publishes a mirror host.
+power_ok, power_err = True, None
 try:
     times, series, unix = load_power()
 except Exception as e:  # noqa: BLE001
-    st.error(f"Could not load the Energy-Charts feed: {e}")
-    st.stop()
+    power_ok, power_err = False, e
+    times, series, unix = [], {}, None
 price_unix, price_vals = load_price()
 with st.spinner("Fetching live grid, per-state green power, and the solar map…"):
     green, weather = load_city_green(), load_city_weather()
@@ -259,7 +263,7 @@ biggest = max(gen_now, key=gen_now.get) if gen_now else "—"
 ci_valid = [(times[t], intensity[t]) for t in range(N) if intensity[t] is not None]
 ci_now = ci_valid[-1][1] if ci_valid else 0.0
 ci_avg = sum(v for _, v in ci_valid) / len(ci_valid) if ci_valid else 0.0
-cleanest = min(ci_valid, key=lambda x: x[1]) if ci_valid else (times[-1], 0)
+cleanest = min(ci_valid, key=lambda x: x[1]) if ci_valid else (times[-1] if len(times) else None, 0)
 co2_now = co2_rate[-1] if co2_rate else 0.0
 gw = lambda mw: f"{mw / 1000:,.1f} GW"  # noqa: E731
 
@@ -300,26 +304,40 @@ def style(fig, h):
     return fig
 
 
+def _offline():
+    """Placeholder shown inside a panel whose data comes from the down Energy-Charts feed."""
+    st.caption("⚠ Energy-Charts feed offline — auto-retrying every 2 min.")
+
+
 # ═══════════════════════════ HEADER (top-left start of the Z) ═════════════════
 hL, hR = st.columns([3, 1])
 with hL:
+    _sub = (f"Live · {ren_share:.0f}% renewable now · {ci_now:.0f} gCO₂/kWh · greenest: {greenest_state}"
+            if power_ok else f"Power feed offline · live map & green index · greenest: {greenest_state}")
     st.markdown("<div class='cc-title'>⚡ GERMANY · NATIONAL POWER GRID</div>"
-                f"<div class='cc-sub'>Live · {ren_share:.0f}% renewable now · "
-                f"{ci_now:.0f} gCO₂/kWh · greenest: {greenest_state}</div>", unsafe_allow_html=True)
+                f"<div class='cc-sub'>{_sub}</div>", unsafe_allow_html=True)
 with hR:
     now_b = pd.Timestamp.now(tz="Europe/Berlin")  # real wall-clock, not the server's UTC
     st.markdown(f"<div style='text-align:right'><span class='cc-title' style='font-size:1.4rem'>"
                 f"{now_b.strftime('%H:%M')}</span><br><span class='cc-sub'>"
                 f"{now_b.strftime('%a %d %b %Y')} · Berlin</span></div>", unsafe_allow_html=True)
 
+if not power_ok:
+    st.warning("⚠ **Energy-Charts is unreachable (upstream 503)** — the national mix, grid carbon "
+               "intensity and day-ahead price are paused. The live solar map, per-state green-power "
+               "index and forecast below stay live. Auto-retrying every 2 min.")
+
 # national key-indicator strip (top horizontal scan)
-n1, n2, n3, n4, n5, n6 = st.columns(6)
-n1.metric("Renewable share", f"{ren_share:.0f}%")
-n2.metric("Carbon intensity", f"{ci_now:.0f} g")
-n3.metric("Total generation", gw(total_gen))
-n4.metric("Demand", gw(load_now))
-n5.metric("Power price", f"€{price_now:,.0f}" if price_now is not None else "—")
-n6.metric("Greenest state", greenest_short)
+if power_ok:
+    n1, n2, n3, n4, n5, n6 = st.columns(6)
+    n1.metric("Renewable share", f"{ren_share:.0f}%")
+    n2.metric("Carbon intensity", f"{ci_now:.0f} g")
+    n3.metric("Total generation", gw(total_gen))
+    n4.metric("Demand", gw(load_now))
+    n5.metric("Power price", f"€{price_now:,.0f}" if price_now is not None else "—")
+    n6.metric("Greenest state", greenest_short)
+else:
+    st.columns([1, 5])[0].metric("Greenest state", greenest_short)
 st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
 # ═══════════ ROW A — mix (left) · MAP anchor (centre) · carbon (right) ═════════
@@ -327,23 +345,29 @@ aL, aC, aR = st.columns([1.05, 1.5, 1.05])
 with aL:
     with st.container(border=True):
         phdr(1, "Generation mix now")
-        fig = go.Figure(go.Pie(labels=["Renewable", "Fossil", "Other"],
-                               values=[ren_now, fos_now, oth_now], hole=0.62, sort=False,
-                               marker_colors=["#22d3ee", "#e879a6", "#64748b"],
-                               hovertemplate="%{label}: %{value:.0f} MW (%{percent})<extra></extra>"))
-        fig.update_layout(annotations=[dict(text=f"{ren_share:.0f}%<br>green", showarrow=False,
-                                            font=dict(size=18, color="#67e8f9"))],
-                          legend=dict(orientation="h", y=-0.08, font=dict(size=10)))
-        fig.update_layout(**DARK, height=230, margin=dict(l=6, r=6, t=6, b=6))
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"Solar {gw(solar_now)} · Wind {gw(wind_now)} · Fossil {gw(fos_now)}")
+        if not power_ok:
+            _offline()
+        else:
+            fig = go.Figure(go.Pie(labels=["Renewable", "Fossil", "Other"],
+                                   values=[ren_now, fos_now, oth_now], hole=0.62, sort=False,
+                                   marker_colors=["#22d3ee", "#e879a6", "#64748b"],
+                                   hovertemplate="%{label}: %{value:.0f} MW (%{percent})<extra></extra>"))
+            fig.update_layout(annotations=[dict(text=f"{ren_share:.0f}%<br>green", showarrow=False,
+                                                font=dict(size=18, color="#67e8f9"))],
+                              legend=dict(orientation="h", y=-0.08, font=dict(size=10)))
+            fig.update_layout(**DARK, height=230, margin=dict(l=6, r=6, t=6, b=6))
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption(f"Solar {gw(solar_now)} · Wind {gw(wind_now)} · Fossil {gw(fos_now)}")
     with st.container(border=True):
         phdr(2, "By source · live MW")
-        ordered = sorted(gen_now.items(), key=lambda kv: kv[1])
-        fig = go.Figure(go.Bar(x=[v for _, v in ordered], y=[n for n, _ in ordered],
-                               orientation="h", marker_color=[COLORS[n] for n, _ in ordered],
-                               hovertemplate="%{y}: %{x:.0f} MW<extra></extra>"))
-        st.plotly_chart(style(fig, 300), use_container_width=True)
+        if not power_ok:
+            _offline()
+        else:
+            ordered = sorted(gen_now.items(), key=lambda kv: kv[1])
+            fig = go.Figure(go.Bar(x=[v for _, v in ordered], y=[n for n, _ in ordered],
+                                   orientation="h", marker_color=[COLORS[n] for n, _ in ordered],
+                                   hovertemplate="%{y}: %{x:.0f} MW<extra></extra>"))
+            st.plotly_chart(style(fig, 300), use_container_width=True)
 
 with aC:
     with st.container(border=True):
@@ -379,53 +403,65 @@ with aC:
 with aR:
     with st.container(border=True):
         phdr(3, "Grid carbon intensity")
-        g = go.Figure(go.Indicator(mode="gauge+number", value=ci_now, number={"suffix": " g"},
-                                   gauge={"axis": {"range": [0, 700]}, "bar": {"color": "#67e8f9"},
-                                          "steps": [{"range": [0, 150], "color": "#155e63"},
-                                                    {"range": [150, 350], "color": "#7a5a12"},
-                                                    {"range": [350, 700], "color": "#7a2348"}]}))
-        g.update_layout(**DARK, height=230, margin=dict(l=14, r=14, t=8, b=4))
-        st.plotly_chart(g, use_container_width=True)
-        st.caption(f"cleanest {cleanest[1]:.0f} g at {cleanest[0].strftime('%H:%M')} · "
-                   f"{co2_now:,.0f} t CO₂/h")
+        if not power_ok:
+            _offline()
+        else:
+            g = go.Figure(go.Indicator(mode="gauge+number", value=ci_now, number={"suffix": " g"},
+                                       gauge={"axis": {"range": [0, 700]}, "bar": {"color": "#67e8f9"},
+                                              "steps": [{"range": [0, 150], "color": "#155e63"},
+                                                        {"range": [150, 350], "color": "#7a5a12"},
+                                                        {"range": [350, 700], "color": "#7a2348"}]}))
+            g.update_layout(**DARK, height=230, margin=dict(l=14, r=14, t=8, b=4))
+            st.plotly_chart(g, use_container_width=True)
+            st.caption(f"cleanest {cleanest[1]:.0f} g at {cleanest[0].strftime('%H:%M')} · "
+                       f"{co2_now:,.0f} t CO₂/h")
     with st.container(border=True):
         phdr(4, "Renewable vs 2030 target")
-        g = go.Figure(go.Indicator(mode="gauge+number", value=ren_share, number={"suffix": "%"},
-                                   gauge={"axis": {"range": [0, 100]}, "bar": {"color": "#22d3ee"},
-                                          "threshold": {"line": {"color": "#67e8f9", "width": 4},
-                                                        "thickness": 0.85, "value": REN_TARGET}}))
-        g.update_layout(**DARK, height=230, margin=dict(l=14, r=14, t=6, b=4))
-        st.plotly_chart(g, use_container_width=True)
+        if not power_ok:
+            _offline()
+        else:
+            g = go.Figure(go.Indicator(mode="gauge+number", value=ren_share, number={"suffix": "%"},
+                                       gauge={"axis": {"range": [0, 100]}, "bar": {"color": "#22d3ee"},
+                                              "threshold": {"line": {"color": "#67e8f9", "width": 4},
+                                                            "thickness": 0.85, "value": REN_TARGET}}))
+            g.update_layout(**DARK, height=230, margin=dict(l=14, r=14, t=6, b=4))
+            st.plotly_chart(g, use_container_width=True)
 
 # ═══════════ ROW B — trends along the diagonal (mix · carbon · price) ═════════
 bL, bC, bR = st.columns(3)
 with bL:
     with st.container(border=True):
         phdr(5, "Mix through the day")
-        fig = go.Figure()
-        for name in STACK_ORDER:
-            if name in series:
-                fig.add_trace(go.Scatter(x=times, y=[v or 0 for v in series[name]], name=name,
-                                         mode="lines", line=dict(width=0.5, color=COLORS[name]),
-                                         stackgroup="g",
-                                         hovertemplate="%{y:.0f} MW<extra>" + name + "</extra>"))
-        if "Load" in series:
-            fig.add_trace(go.Scatter(x=times, y=series["Load"], name="Demand", mode="lines",
-                                     line=dict(color="#eaf6ff", width=1.6, dash="dot"),
-                                     hovertemplate="%{y:.0f} MW<extra>Demand</extra>"))
-        fig.update_layout(**DARK, height=230, margin=dict(l=6, r=6, t=6, b=6),
-                          showlegend=False, hovermode="x unified")
-        st.plotly_chart(fig, use_container_width=True)
+        if not power_ok:
+            _offline()
+        else:
+            fig = go.Figure()
+            for name in STACK_ORDER:
+                if name in series:
+                    fig.add_trace(go.Scatter(x=times, y=[v or 0 for v in series[name]], name=name,
+                                             mode="lines", line=dict(width=0.5, color=COLORS[name]),
+                                             stackgroup="g",
+                                             hovertemplate="%{y:.0f} MW<extra>" + name + "</extra>"))
+            if "Load" in series:
+                fig.add_trace(go.Scatter(x=times, y=series["Load"], name="Demand", mode="lines",
+                                         line=dict(color="#eaf6ff", width=1.6, dash="dot"),
+                                         hovertemplate="%{y:.0f} MW<extra>Demand</extra>"))
+            fig.update_layout(**DARK, height=230, margin=dict(l=6, r=6, t=6, b=6),
+                              showlegend=False, hovermode="x unified")
+            st.plotly_chart(fig, use_container_width=True)
 with bC:
     with st.container(border=True):
         phdr(6, "Carbon intensity through the day")
-        fig = go.Figure(go.Scatter(x=times, y=intensity, mode="lines",
-                                   line=dict(color="#22d3ee", width=2), fill="tozeroy",
-                                   fillcolor="rgba(34,211,238,0.12)",
-                                   hovertemplate="%{y:.0f} gCO₂/kWh<extra></extra>"))
-        fig.add_hline(y=ci_avg, line=dict(color="#7fa8cf", dash="dot"),
-                      annotation_text=f"avg {ci_avg:.0f}", annotation_position="top left")
-        st.plotly_chart(style(fig, 230), use_container_width=True)
+        if not power_ok:
+            _offline()
+        else:
+            fig = go.Figure(go.Scatter(x=times, y=intensity, mode="lines",
+                                       line=dict(color="#22d3ee", width=2), fill="tozeroy",
+                                       fillcolor="rgba(34,211,238,0.12)",
+                                       hovertemplate="%{y:.0f} gCO₂/kWh<extra></extra>"))
+            fig.add_hline(y=ci_avg, line=dict(color="#7fa8cf", dash="dot"),
+                          annotation_text=f"avg {ci_avg:.0f}", annotation_position="top left")
+            st.plotly_chart(style(fig, 230), use_container_width=True)
 with bR:
     with st.container(border=True):
         phdr(7, "Day-ahead power price")
@@ -453,16 +489,19 @@ with cL:
 with cC:
     with st.container(border=True):
         phdr(0, "Key figures")
-        r1 = st.columns(2)
-        r1[0].metric("Solar", gw(solar_now))
-        r1[1].metric("Wind", gw(wind_now))
-        r2 = st.columns(2)
-        r2[0].metric("Fossil", gw(fos_now))
-        r2[1].metric("CO₂ rate", f"{co2_now:,.0f} t/h")
-        r3 = st.columns(2)
-        flow = "Net export" if trade_now < 0 else "Net import"
-        r3[0].metric(flow, gw(abs(trade_now)))
-        r3[1].metric("Avg price", f"€{price_avg:,.0f}" if price_avg is not None else "—")
+        if not power_ok:
+            _offline()
+        else:
+            r1 = st.columns(2)
+            r1[0].metric("Solar", gw(solar_now))
+            r1[1].metric("Wind", gw(wind_now))
+            r2 = st.columns(2)
+            r2[0].metric("Fossil", gw(fos_now))
+            r2[1].metric("CO₂ rate", f"{co2_now:,.0f} t/h")
+            r3 = st.columns(2)
+            flow = "Net export" if trade_now < 0 else "Net import"
+            r3[0].metric(flow, gw(abs(trade_now)))
+            r3[1].metric("Avg price", f"€{price_avg:,.0f}" if price_avg is not None else "—")
 with cR:
     with st.container(border=True):
         phdr(9, "When will power be greenest?")
@@ -497,8 +536,12 @@ with st.sidebar:
     st.caption("The clock (top-right) is live — the app auto-refreshes every 2 min while open. "
                "Streamlit Cloud sleeps when idle, then wakes and re-fetches on the next visit.")
     st.divider()
-    st.caption(f"Energy-Charts publishes the national mix ~{max(0, int(time.time() - unix[-1])) // 60} "
-               "min behind real time (the source's lag) — GrünstromIndex and weather are live.")
+    if unix:
+        st.caption(f"Energy-Charts publishes the national mix ~{max(0, int(time.time() - unix[-1])) // 60} "
+                   "min behind real time (the source's lag) — GrünstromIndex and weather are live.")
+    else:
+        st.caption("Energy-Charts feed is unreachable (upstream 503) — national mix, carbon and price "
+                   "are paused; GrünstromIndex and weather are live.")
     st.caption(f"States live: {len(live)}/{len(CITIES)} · fetch {fetch_ms:.0f} ms")
     st.caption("Feeds: Energy-Charts · Corrently · Open-Meteo · no key, no DB")
     st.divider()
