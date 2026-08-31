@@ -66,6 +66,29 @@ keep working, and a warning banner explains the pause. The app auto-retries ever
 existing autorefresh + cache TTL. Rule: no single upstream host should be able to take down
 panels fed by other sources.
 
+## Plotly 6: MapLibre map traces (2026-08-31)
+`requirements.txt` pinned `plotly>=5.20`, so Streamlit Cloud resolved 6.7 and the app died with
+`AttributeError: module 'plotly.graph_objects' has no attribute 'Densitymapbox'` — Plotly 6 removed
+the deprecated `*mapbox` traces outright. Migrated to `Densitymap`/`Scattermap` with `map_style` /
+`map_center` / `map_zoom`, and pinned `plotly>=6.0` so local and deploy can't drift again.
+`carto-darkmatter` is native to MapLibre, so the look is unchanged and still needs no token.
+The gotcha above still holds, just rename `*mapbox` → `*map`.
+
+## Keeping the app awake (2026-08-31)
+Community Cloud sleeps idle apps with no way to disable it. A daily GitHub Actions cron
+(`.github/workflows/keep-awake.yml`) loads the app so it looks like a visitor. It uses headless
+Chromium, not curl, because every path on `*.streamlit.app` — `/_stcore/health` included — is
+redirected through `share.streamlit.io/-/auth/app` and returns the same generic React shell with
+HTTP 200. curl never reaches the app container, so it neither counts as traffic nor distinguishes
+awake from asleep; a curl check would report green forever while the app slept. The container is
+only reached once the page's JS opens its websocket. The assertion searches **frames**, because
+Cloud renders the app in an iframe, and matches case-insensitively since the header is uppercased
+by CSS. It asserts the app booted, not that data arrived — otherwise an Energy-Charts outage would
+fail the ping even though degradation is handled by design.
+Unknowns, deliberately: Streamlit doesn't document the inactivity threshold, so daily is a guess —
+if the moon icon comes back, lower the cron. And GitHub disables scheduled workflows after 60 days
+with no repo commits, which would silently end the pings.
+
 ## Ideas for next iterations
 - Clip the solar field to Germany's outline (point-in-polygon on a GeoJSON).
 - Genuinely-live regional load via SMARD's 4 TSO control zones (50Hertz / Amprion / TenneT / TransnetBW).

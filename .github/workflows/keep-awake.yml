@@ -1,0 +1,87 @@
+name: keep-awake
+
+# Streamlit Community Cloud sleeps apps after a stretch of no traffic, and there
+# is no setting to turn that off. This loads the app once a day so it looks like
+# a visitor.
+#
+# Why a browser and not curl: every path on *.streamlit.app (including
+# /_stcore/health) is redirected through share.streamlit.io/-/auth/app and comes
+# back as the same generic React shell with HTTP 200. curl never reaches the app
+# container, so it neither counts as traffic nor tells us anything — a curl check
+# would report green while the app sleeps. The container is only reached once the
+# page's JS boots and opens its websocket, which needs a real browser.
+on:
+  schedule:
+    # 06:17 UTC daily. Odd minute on purpose: runners are congested on the hour
+    # and GitHub delays those scheduled runs the most.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    # Prebuilt image: chromium and its system libs are already there, so no
+    # ~2 min of `playwright install --with-deps` on every run.
+    container: mcr.microsoft.com/playwright/python:v1.62.0-noble
+    steps:
+      - name: Load the app in a real browser
+        env:
+          APP_URL: https://germany-power-dashboard.streamlit.app
+        run: |
+          python - <<'PY'
+          import os, re, sys, time
+          from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
+          URL = os.environ["APP_URL"]
+          # Cloud renders the app inside an iframe, so the marker never appears in the
+          # outer page's text — it has to be searched frame by frame. Matched
+          # case-insensitively because the header is uppercased by CSS and inner_text
+          # returns the transformed text.
+          MARKER = re.compile(r"national power grid", re.I)
+
+          def app_rendered(page):
+              for frame in page.frames:
+                  try:
+                      if MARKER.search(frame.locator("body").inner_text(timeout=5_000)):
+                          return True
+                  except Exception:
+                      continue  # frame detached mid-poll, or not readable yet
+              return False
+
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page(viewport={"width": 1440, "height": 900})
+              page.goto(URL, wait_until="domcontentloaded", timeout=90_000)
+
+              # If it was asleep, Cloud renders a wake button instead of the app.
+              try:
+                  wake = page.get_by_role("button", name=re.compile("get this app back up", re.I))
+                  wake.wait_for(state="visible", timeout=15_000)
+                  print("::warning::App was asleep — waking it. Daily is too slow; lower the cron.")
+                  wake.click()
+              except PWTimeout:
+                  pass  # normal case: it was already awake
+
+              # Boot can take a couple of minutes from cold (deps install + first fetch).
+              deadline = time.time() + 240
+              while time.time() < deadline:
+                  if app_rendered(page):
+                      print("App is up and rendering.")
+                      browser.close()
+                      sys.exit(0)
+                  page.wait_for_timeout(5_000)
+
+              # A ping that goes green on a dead app is worse than no ping at all, so
+              # fail loudly. The screenshot says which it was: sleep screen, Streamlit
+              # error, or the app's own "feed is quiet" degraded state.
+              page.screenshot(path="failure.png", full_page=True)
+              sys.exit("::error::App did not render within 4 min — asleep, crashed, or upstream down.")
+          PY
+
+      - name: Upload screenshot on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-screenshot
+          path: failure.png
+          if-no-files-found: ignore
