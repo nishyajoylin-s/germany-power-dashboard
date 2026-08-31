@@ -379,11 +379,11 @@ with aC:
             fig = go.Figure()
             gpts = [(a, o, z) for a, o, z in zip(glat, glon, girr) if z is not None]
             if gpts:
-                fig.add_trace(go.Densitymapbox(
+                fig.add_trace(go.Densitymap(
                     lat=[p[0] for p in gpts], lon=[p[1] for p in gpts], z=[p[2] for p in gpts],
                     radius=38, zmin=0, zmax=950, opacity=0.38, showscale=False,
                     hoverinfo="skip", colorscale=SUN_SCALE))
-            fig.add_trace(go.Scattermapbox(
+            fig.add_trace(go.Scattermap(
                 lat=mp["lat"], lon=mp["lon"], mode="markers",
                 marker=dict(size=mp["size"], color=mp["gsi"], cmin=0, cmax=100,
                             colorscale=GREEN_SCALE, opacity=0.97, showscale=True,
@@ -394,8 +394,8 @@ with aC:
                               "<br>Renewable %{customdata[3]:.0f}%  ·  %{customdata[4]:.0f} gCO₂/kWh"
                               "<br>Sun %{customdata[5]:.0f} W/m²  ·  Wind %{customdata[6]:.0f} km/h<extra></extra>"))
             fig.update_layout(**DARK, height=540, margin=dict(l=0, r=0, t=0, b=0),
-                              showlegend=False, mapbox_style="carto-darkmatter",
-                              mapbox_center=dict(lat=51.1, lon=10.2), mapbox_zoom=4.95)
+                              showlegend=False, map_style="carto-darkmatter",
+                              map_center=dict(lat=51.1, lon=10.2), map_zoom=4.95)
             st.plotly_chart(fig, use_container_width=True)
             st.caption("Amber glow = live solar irradiance (~300 grid points); "
                        "bubbles = each state's live green-power index.")
