@@ -20,14 +20,21 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    # Prebuilt image: chromium and its system libs are already there, so no
-    # ~2 min of `playwright install --with-deps` on every run.
+    # Prebuilt image: chromium and its system libs are already baked into
+    # /ms-playwright, so no ~2 min of `playwright install --with-deps` per run.
     container: mcr.microsoft.com/playwright/python:v1.62.0-noble
     steps:
       - name: Load the app in a real browser
         env:
           APP_URL: https://germany-power-dashboard.streamlit.app
         run: |
+          # The image ships the browsers but NOT the python package - it installs
+          # playwright into a throwaway venv and deletes it after baking browsers
+          # (see the image's Dockerfile). So pip install it, pinned to the image
+          # tag: the package only drives browser revisions of its own version.
+          # This is a wheel download, not a browser download, so it stays quick.
+          pip install --quiet playwright==1.62.0
+
           python - <<'PY'
           import os, re, sys, time
           from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -80,7 +87,7 @@ jobs:
 
       - name: Upload screenshot on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: failure-screenshot
           path: failure.png
