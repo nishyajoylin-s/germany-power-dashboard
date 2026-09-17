@@ -2,8 +2,9 @@
 
 A single-screen, real-time **command-centre** for the German electricity system: what's
 generating power right now, how clean it is, what it costs, and how green each federal state
-is — all on one page. Built with Streamlit + Plotly on public feeds. **No API key, no
-database, no simulation** — every refresh pulls live JSON and renders it.
+is — all on one page. Built with Streamlit + Plotly on public feeds. **No API key to manage,
+no database, no simulation** — every refresh pulls live JSON and renders it. (Corrently requires
+a token since Sept 2026; the app mints a free anonymous one itself at runtime.)
 
 🔗 **Live demo:** **[germany-power-dashboard.streamlit.app](https://germany-power-dashboard.streamlit.app/)**
 
@@ -31,7 +32,7 @@ database, no simulation** — every refresh pulls live JSON and renders it.
 | Feed | Provides |
 |------|----------|
 | [Energy-Charts](https://energy-charts.info) (Fraunhofer ISE) | national generation mix + day-ahead price |
-| [Corrently GrünstromIndex](https://corrently.de) | per-postcode green-power index (sampled at each of the 16 state capitals) |
+| [Corrently GrünstromIndex](https://corrently.de) | per-postcode green-power index (sampled at each of the 16 state capitals); token minted by the app, see `corrently_token()` |
 | [Open-Meteo](https://open-meteo.com) | live solar irradiance + wind (per state, and a ~300-point grid for the heatmap) |
 
 ## Why carbon intensity is computed, not fetched
@@ -62,7 +63,7 @@ Push to GitHub, then on [share.streamlit.io](https://share.streamlit.io) create 
 
 | Piece | Tool |
 |-------|------|
-| Data | Energy-Charts · Corrently GrünstromIndex · Open-Meteo (all key-free) |
+| Data | Energy-Charts · Corrently GrünstromIndex · Open-Meteo (nothing to sign up for) |
 | Carbon model | IPCC AR5 lifecycle emission factors (in `app.py`) |
 | App / charts | Streamlit + Plotly, single-screen command-centre layout |
 | Refresh | `streamlit-autorefresh`, every 2 min (matching the 15-min feeds) |

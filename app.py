@@ -3,7 +3,10 @@ Germany — Live Power Grid & Carbon Dashboard (single-screen command centre)
 
 Real-time German electricity on one page: the national generation mix, a computed
 grid carbon intensity, day-ahead prices, and genuinely-live per-city green power.
-All from public feeds — no API key, no database.
+All from public feeds — no API key you have to manage, no database. Corrently
+stopped serving tokenless requests in Sept 2026, so the app mints its own free
+anonymous token at runtime (see corrently_token). Optional override: put a
+longer-lived token in CORRENTLY_TOKEN (Streamlit secrets or env).
 
 Feeds:  Energy-Charts (Fraunhofer ISE) · Corrently GrünstromIndex · Open-Meteo
 Carbon: computed from the live mix via IPCC AR5 lifecycle emission factors.
@@ -11,6 +14,8 @@ Carbon: computed from the live mix via IPCC AR5 lifecycle emission factors.
 
 Run:    streamlit run app.py
 """
+import os
+import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -24,6 +29,8 @@ from streamlit_autorefresh import st_autorefresh
 
 POWER_API = "https://api.energy-charts.info/public_power?country=de"
 PRICE_API = "https://api.energy-charts.info/price?bzn=DE-LU"
+GSI_API = "https://api.corrently.io/v2.0/gsi/prediction"
+GSI_TOKEN_API = "https://api.corrently.io/v2.0/auth/requestToken"
 REFRESH_MS = 120000
 REN_TARGET = 80
 
@@ -153,9 +160,48 @@ def load_price():
         return None, None
 
 
-def _gsi_now(zipc):
-    fc = requests.get(f"https://api.corrently.io/v2.0/gsi/prediction?zip={zipc}",
-                      timeout=15).json().get("forecast", [])
+def _secret(name):
+    # st.secrets raises if no secrets file exists at all (fresh local clone), so
+    # fall back to the environment rather than crash the whole page.
+    try:
+        return st.secrets.get(name) or os.environ.get(name, "")
+    except Exception:
+        return os.environ.get(name, "")
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def corrently_token():
+    """A token for the GrünstromIndex API, minted by the app itself.
+
+    The free "anonymous" tier is what console.corrently.io hands out in the
+    browser: it just POSTs a random device id to /auth/requestToken and gets a
+    7-day JWT back — no browser, no email, no sign-up. So instead of pasting a
+    new token into Cloud secrets every week, the app requests one and caches it
+    for a day (cache is per process; a restart simply mints another). Minting
+    counts against the same 30-requests-per-window rate limit as data calls,
+    so it is cached rather than done per fetch. CORRENTLY_TOKEN, if set, wins —
+    that is the hook for an email-secured token if one is ever obtained.
+    """
+    if _secret("CORRENTLY_TOKEN"):
+        return _secret("CORRENTLY_TOKEN")
+    try:
+        r = requests.post(GSI_TOKEN_API, json={"deviceid": secrets.token_hex(8)}, timeout=15)
+        return r.json().get("token", "") or ""
+    except Exception:
+        return ""  # data calls will then fail loudly with the API's own message
+
+
+def _gsi_forecast(zipc, token):
+    # Without a valid token the API answers HTTP 200 with {"err": true} and no
+    # forecast, so an HTTP status check would never catch it — check the body.
+    d = requests.get(GSI_API, params={"zip": zipc, "token": token}, timeout=15).json()
+    if d.get("err"):
+        raise RuntimeError(f"Corrently refused zip {zipc}: {d.get('provisioning', {}).get('warning')}")
+    return d.get("forecast", [])
+
+
+def _gsi_now(zipc, token):
+    fc = _gsi_forecast(zipc, token)
     if not fc:
         return None
     cur = min(fc, key=lambda x: abs(x.get("epochtime", 0) - time.time()))
@@ -165,8 +211,9 @@ def _gsi_now(zipc):
 @st.cache_data(ttl=600, show_spinner=False)
 def load_city_green():
     out = {}
+    token = corrently_token()  # here, not in the workers: st.cache_data needs the script thread
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(_gsi_now, c[5]): c[5] for c in CITIES}
+        futs = {ex.submit(_gsi_now, c[5], token): c[5] for c in CITIES}
         for fut, zipc in futs.items():
             try:
                 out[zipc] = fut.result()
@@ -207,8 +254,10 @@ def load_irradiance_grid():
 
 @st.cache_data(ttl=600, show_spinner=False)
 def load_city_forecast(zipc):
-    return requests.get(f"https://api.corrently.io/v2.0/gsi/prediction?zip={zipc}",
-                        timeout=15).json().get("forecast", [])
+    try:
+        return _gsi_forecast(zipc, corrently_token())
+    except Exception:
+        return []
 
 
 def last_val(arr):
@@ -373,7 +422,8 @@ with aC:
     with st.container(border=True):
         phdr(0, "Live solar glow + green-power · 16 states")
         if live.empty:
-            st.warning("Green-power feed is quiet right now — retry shortly.")
+            st.warning("Green-power feed is quiet right now — retry shortly."
+                       + ("" if corrently_token() else " (Could not obtain a Corrently token.)"))
         else:
             mp = live.assign(size=(live["pop_k"] / 130).clip(13, 32))
             fig = go.Figure()

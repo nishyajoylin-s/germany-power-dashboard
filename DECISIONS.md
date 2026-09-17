@@ -75,8 +75,8 @@ the deprecated `*mapbox` traces outright. Migrated to `Densitymap`/`Scattermap` 
 The gotcha above still holds, just rename `*mapbox` → `*map`.
 
 ## Keeping the app awake (2026-08-31)
-Community Cloud sleeps idle apps with no way to disable it. A daily GitHub Actions cron
-(`.github/workflows/keep-awake.yml`) loads the app so it looks like a visitor. It uses headless
+Community Cloud sleeps idle apps with no way to disable it. A GitHub Actions cron
+(`.github/workflows/keep-awake.yml`, every 6h) loads the app so it looks like a visitor. It uses headless
 Chromium, not curl, because every path on `*.streamlit.app` — `/_stcore/health` included — is
 redirected through `share.streamlit.io/-/auth/app` and returns the same generic React shell with
 HTTP 200. curl never reaches the app container, so it neither counts as traffic nor distinguishes
@@ -85,9 +85,42 @@ only reached once the page's JS opens its websocket. The assertion searches **fr
 Cloud renders the app in an iframe, and matches case-insensitively since the header is uppercased
 by CSS. It asserts the app booted, not that data arrived — otherwise an Energy-Charts outage would
 fail the ping even though degradation is handled by design.
-Unknowns, deliberately: Streamlit doesn't document the inactivity threshold, so daily is a guess —
-if the moon icon comes back, lower the cron. And GitHub disables scheduled workflows after 60 days
-with no repo commits, which would silently end the pings.
+Cadence (revised 2026-09-17): it started daily, and every run from 5 to 16 Sep logged "App was
+asleep", so the threshold is under 24h — ~12h by Streamlit's forum answers. GitHub also fired the
+06:17 schedule 4-6h late on every run, so the margin has to absorb that. Every 6h leaves 2x.
+Remaining unknown: GitHub disables scheduled workflows after 60 days with no repo commits, which
+would silently end the pings.
+
+## Corrently needs a token now (2026-09-17)
+The map and state-ranking panels went permanently "quiet". Cause: Corrently stopped serving
+the GrünstromIndex anonymously — every postcode returns HTTP 200 with `{"err": true}`, no
+forecast, and a "Deprecation of usage without token" warning. The old code only looked at
+`.get("forecast", [])`, so a refused request looked identical to an empty feed and the
+degraded state hid a config problem for as long as it took someone to notice.
+Fix: the app mints its own token. Reading the console's JS showed that the "anonymous" button
+just POSTs `{"deviceid": <random>}` to `/v2.0/auth/requestToken` and gets a 7-day JWT — no
+browser, no email. `corrently_token()` does exactly that, cached 24h with `st.cache_data`, and
+`_gsi_forecast()` raises on `err: true` so refusals are distinguishable from outages. No secret
+to rotate, no weekly job. Rejected alternatives: a weekly GitHub Action that mints a token and
+commits it (token in git, and Cloud has no API to update secrets); pasting a token by hand every
+week (a chore that fails silently the week it is forgotten). `CORRENTLY_TOKEN` still overrides,
+for an email-secured token if one is ever obtained — the free unlimited tier needs a company
+email, which is why that path was not taken. Energy-Charts and Open-Meteo were checked the same
+day and are fine.
+Two separate problems, verified 2026-09-17: (1) anonymous access is deprecated, as above; and
+(2) their backend was also down that day — with a verified token, `gsi/prediction` still
+returned `{"err": true}` for every zip including their own docs' sample, `gsi/advisor` gave
+HTTP 500, `gsi/marketdata` returned zero rows, and status.corrently.io was a 502. So a valid
+token is necessary but was not yet sufficient. The error is served from the origin, not a stale
+Cloudflare cache (checked with a cache-busting query param, `cf-cache-status: MISS`).
+Outage history, from evcc's tracker (evcc ships a Grünstromindex tariff, so thousands of users
+notice): Dec 2024 rate-limit lockout; Nov 2025 429s and timeouts; Jan 2026 502/503 after days of
+uptime; 3 Aug 2026 "no data, token OK" with the maintainer's reply that it drops out every so
+often and returns after one to several days; 25 Aug 2026 `co2_g_standard` went permanently
+null; 27 Aug 2026 a full forecast still served. So this is a flaky provider, not a dead one.
+Candidate replacement, verified live the same day with no key: SMARD (Bundesnetzagentur)
+per-control-zone generation, e.g. `smard.de/app/chart_data/4068/TenneT/index_quarterhour.json`
+then `4068_TenneT_quarterhour_<ts>.json`, four zones instead of sixteen states, ~1h lag.
 
 ## Ideas for next iterations
 - Clip the solar field to Germany's outline (point-in-polygon on a GeoJSON).
