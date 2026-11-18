@@ -23,6 +23,10 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
+    # The keep-enabled step below calls the workflow "enable" endpoint, which
+    # needs write access to Actions. Repo default is read-only.
+    permissions:
+      actions: write
     # Prebuilt image: chromium and its system libs are already baked into
     # /ms-playwright, so no ~2 min of `playwright install --with-deps` per run.
     container: mcr.microsoft.com/playwright/python:v1.62.0-noble
@@ -87,6 +91,21 @@ jobs:
               page.screenshot(path="failure.png", full_page=True)
               sys.exit("::error::App did not render within 4 min — asleep, crashed, or upstream down.")
           PY
+
+      # GitHub switches off scheduled workflows in a repo with no commits for 60
+      # days — it happened here on 16 Nov 2026 (last push was 17 Sep) and the app
+      # slept for two days. Re-enabling the workflow from inside the run resets
+      # that 60-day clock, so the schedule survives repos that are finished.
+      - name: Keep the schedule enabled
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # curl, not `gh`: the playwright container image does not ship the CLI.
+        run: |
+          curl --silent --show-error --fail -X PUT \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/keep-awake.yml/enable"
 
       - name: Upload screenshot on failure
         if: failure()
